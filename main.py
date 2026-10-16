@@ -1,11 +1,14 @@
+import asyncio
+loop = asyncio.new_event_loop()
+asyncio.set_event_loop(loop)
+
 import os
 import re
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import threading
 from pyrogram import Client, filters
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, Message
-import aiohttp
-import aiofiles
+import yt_dlp
 
 class HealthCheckHandler(BaseHTTPRequestHandler):
     def do_GET(self):
@@ -32,6 +35,20 @@ RUSSIAN_DESC = (
     "Музыкальный бот для поиска и прослушивания треков в Telegram. "
     "Быстрое воспроизведение музыки высокого качества в группах."
 )
+
+YTDL_OPTS = {
+    "format": "bestaudio/best",
+    "outtmpl": "downloads/%(id)s.%(ext)s",
+    "quiet": True,
+    "no_warnings": True,
+    "nocheckcertificate": True,
+    "cookiefile": "cookies.txt",
+    "postprocessors": [{
+        "key": "FFmpegExtractAudio",
+        "preferredcodec": "mp3",
+        "preferredquality": "192",
+    }],
+}
 
 @app.on_message(filters.command("start") & filters.private)
 async def start_private(client: Client, message: Message):
@@ -68,49 +85,24 @@ async def search_music(client: Client, message: Message):
 
     try:
         os.makedirs("downloads", exist_ok=True)
-        search_url = f"https://saavn.dev/api/search/songs?query={query}&page=1&limit=1"
-
-        async with aiohttp.ClientSession() as session:
-            async with session.get(search_url, timeout=aiohttp.ClientTimeout(total=10)) as resp:
-                if resp.status != 200:
-                    await status.edit_text("خطأ في الاتصال بمحرك البحث.")
-                    return
-                data = await resp.json()
-
-            if not data.get("success") or not data.get("data", {}).get("results"):
-                await status.edit_text("لم يتم العثور على الأغنية، جرب كتابة اسم المغني معها.")
-                return
-
-            song = data["data"]["results"][0]
-            title = song.get("name", query)
-            performer = song.get("primaryArtists", "Spaidy Music")
-            duration = int(song.get("duration", 0))
-
-            download_urls = song.get("downloadUrl", [])
-            if not download_urls:
-                await status.edit_text("تعذر جلب رابط التحميل.")
-                return
-
-            audio_url = download_urls[-1].get("url")
-            file_path = f"downloads/{song.get('id', 'track')}.mp3"
-
-            async with session.get(audio_url, timeout=aiohttp.ClientTimeout(total=30)) as audio_resp:
-                if audio_resp.status != 200:
-                    await status.edit_text("فشل تحميل الملف الصوتي.")
-                    return
-                async with aiofiles.open(file_path, mode="wb") as f:
-                    await f.write(await audio_resp.read())
+        with yt_dlp.YoutubeDL(YTDL_OPTS) as ytdl:
+            info = ytdl.extract_info(f"ytsearch1:{query}", download=True)["entries"][0]
+            audio_id = info["id"]
+            title = info.get("title", query)
+            performer = info.get("uploader", "Spaidy Music")
+            duration = int(info.get("duration", 0))
+            audio_file = f"downloads/{audio_id}.mp3"
 
         await message.reply_audio(
-            audio=file_path,
+            audio=audio_file,
             title=title,
             performer=performer,
             duration=duration
         )
         await status.delete()
 
-        if os.path.exists(file_path):
-            os.remove(file_path)
+        if os.path.exists(audio_file):
+            os.remove(audio_file)
 
     except Exception as e:
         await status.edit_text(f"خطأ: {str(e)}")
