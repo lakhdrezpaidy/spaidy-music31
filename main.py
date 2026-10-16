@@ -84,11 +84,9 @@ async def search_music(client: Client, message: Message):
 
     try:
         os.makedirs("downloads", exist_ok=True)
-        # البحث في ساوندكلاود أولاً لتجنب حظر عناوين الآيبي الخاصة بالسيرفرات السحابية
-        search_target = f"scsearch1:{query}"
-        
+        # البحث في ساوندكلاود بدون المرور على يوتيوب المحظور
         with yt_dlp.YoutubeDL(YTDL_OPTS) as ytdl:
-            info = ytdl.extract_info(search_target, download=True)["entries"][0]
+            info = ytdl.extract_info(f"scsearch1:{query}", download=True)["entries"][0]
             audio_id = info["id"]
             title = info.get("title", query)
             performer = info.get("uploader", "Spaidy Music")
