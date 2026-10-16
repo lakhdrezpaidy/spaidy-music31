@@ -36,13 +36,26 @@ RUSSIAN_DESC = (
     "Быстрое воспроизведение музыки высокого качества в группах."
 )
 
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+COOKIE_PATH = os.path.join(BASE_DIR, "cookies.txt")
+
 YTDL_OPTS = {
     "format": "bestaudio/best",
     "outtmpl": "downloads/%(id)s.%(ext)s",
     "quiet": True,
     "no_warnings": True,
     "nocheckcertificate": True,
-    "cookiefile": "cookies.txt",
+    "cookiefile": COOKIE_PATH,
+    "http_headers": {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept-Language": "en-US,en;q=0.9",
+    },
+    "extractor_args": {
+        "youtube": {
+            "player_client": ["web", "mweb"],
+            "player_skip": ["configs"]
+        }
+    },
     "postprocessors": [{
         "key": "FFmpegExtractAudio",
         "preferredcodec": "mp3",
