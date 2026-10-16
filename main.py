@@ -9,6 +9,7 @@ import threading
 from pyrogram import Client, filters
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, Message
 import yt_dlp
+import requests
 
 class HealthCheckHandler(BaseHTTPRequestHandler):
     def do_GET(self):
@@ -36,13 +37,14 @@ RUSSIAN_DESC = (
     "Быстрое воспроизведение музыки высокого качества в группах."
 )
 
-# إعدادات تحميل سحابية خاصة لا تتعرض لحظر خوادم يوتيوب
+# إعدادات لتخطي المقاطع المشفرة وسحب المقاطع المتاحة فقط
 YTDL_OPTS = {
-    "format": "bestaudio/best",
+    "format": "bestaudio[ext=mp3]/bestaudio/best",
     "outtmpl": "downloads/%(id)s.%(ext)s",
     "quiet": True,
     "no_warnings": True,
     "nocheckcertificate": True,
+    "ignoreerrors": True,
     "postprocessors": [{
         "key": "FFmpegExtractAudio",
         "preferredcodec": "mp3",
@@ -85,26 +87,44 @@ async def search_music(client: Client, message: Message):
 
     try:
         os.makedirs("downloads", exist_ok=True)
-        
-        # البحث المباشر في قاعدة البيانات الصوتية الحرة لتفادي حظر Data Centers
+        downloaded = False
+        audio_file = None
+        title = query
+        performer = "Spaidy Music"
+        duration = 0
+
+        # محاولة البحث السحابي المباشر وتجنب مقاطع DRM المحمية (بحث عن أفضل 5 نتائج وتخطي المشفر)
         with yt_dlp.YoutubeDL(YTDL_OPTS) as ytdl:
-            info = ytdl.extract_info(f"scsearch1:{query}", download=True)["entries"][0]
-            audio_id = info["id"]
-            title = info.get("title", query)
-            performer = info.get("uploader", "Spaidy Music")
-            duration = int(info.get("duration", 0))
-            audio_file = f"downloads/{audio_id}.mp3"
+            search_res = ytdl.extract_info(f"scsearch5:{query}", download=False)
+            if search_res and "entries" in search_res:
+                for entry in search_res["entries"]:
+                    if not entry:
+                        continue
+                    try:
+                        info = ytdl.extract_info(entry["webpage_url"], download=True)
+                        if info:
+                            audio_id = info["id"]
+                            title = info.get("title", query)
+                            performer = info.get("uploader", "Spaidy Music")
+                            duration = int(info.get("duration", 0))
+                            audio_file = f"downloads/{audio_id}.mp3"
+                            if os.path.exists(audio_file):
+                                downloaded = True
+                                break
+                    except Exception:
+                        continue
 
-        await message.reply_audio(
-            audio=audio_file,
-            title=title,
-            performer=performer,
-            duration=duration
-        )
-        await status.delete()
-
-        if os.path.exists(audio_file):
+        if downloaded and audio_file and os.path.exists(audio_file):
+            await message.reply_audio(
+                audio=audio_file,
+                title=title,
+                performer=performer,
+                duration=duration
+            )
+            await status.delete()
             os.remove(audio_file)
+        else:
+            await status.edit_text("لم يتم العثور على مقطع متاح للتحميل، جرب كتابة اسم الفنان مع الأغنية.")
 
     except Exception as e:
         await status.edit_text(f"خطأ: {str(e)}")
