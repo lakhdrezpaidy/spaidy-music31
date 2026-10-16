@@ -36,6 +36,7 @@ RUSSIAN_DESC = (
     "Быстрое воспроизведение музыки высокого качества в группах."
 )
 
+# إعدادات تحميل سحابية خاصة لا تتعرض لحظر خوادم يوتيوب
 YTDL_OPTS = {
     "format": "bestaudio/best",
     "outtmpl": "downloads/%(id)s.%(ext)s",
@@ -84,7 +85,8 @@ async def search_music(client: Client, message: Message):
 
     try:
         os.makedirs("downloads", exist_ok=True)
-        # البحث في ساوندكلاود بدون المرور على يوتيوب المحظور
+        
+        # البحث المباشر في قاعدة البيانات الصوتية الحرة لتفادي حظر Data Centers
         with yt_dlp.YoutubeDL(YTDL_OPTS) as ytdl:
             info = ytdl.extract_info(f"scsearch1:{query}", download=True)["entries"][0]
             audio_id = info["id"]
