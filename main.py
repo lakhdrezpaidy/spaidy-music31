@@ -4,25 +4,9 @@ asyncio.set_event_loop(loop)
 
 import os
 import re
-from http.server import HTTPServer, BaseHTTPRequestHandler
-import threading
 from pyrogram import Client, filters
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, Message
 import yt_dlp
-
-# خادم ويب وهمي لإرضاء Render وإنهاء الفحص فوراً
-class HealthCheckHandler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        self.send_response(200)
-        self.end_headers()
-        self.wfile.write(b"Bot is alive!")
-
-def run_server():
-    port = int(os.environ.get("PORT", 8080))
-    server = HTTPServer(("0.0.0.0", port), HealthCheckHandler)
-    server.serve_forever()
-
-threading.Thread(target=run_server, daemon=True).start()
 
 API_ID = 25463867
 API_HASH = "f8616f4968fb92904faa7c4790e2eb27"
@@ -37,11 +21,18 @@ RUSSIAN_DESC = (
     "Быстрое воспроизведение музыки высокого качества в группах."
 )
 
+# إعدادات متقدمة لتخطي حظر سيرفرات يوتيوب وبوتات الفحص
 YTDL_OPTS = {
     "format": "bestaudio/best",
     "outtmpl": "downloads/%(id)s.%(ext)s",
     "quiet": True,
     "no_warnings": True,
+    "nocheckcertificate": True,
+    "extractor_args": {
+        "youtube": {
+            "player_client": ["android", "ios", "web_creator"]
+        }
+    },
     "postprocessors": [{
         "key": "FFmpegExtractAudio",
         "preferredcodec": "mp3",
