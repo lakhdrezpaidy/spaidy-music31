@@ -4,9 +4,24 @@ asyncio.set_event_loop(loop)
 
 import os
 import re
+from http.server import HTTPServer, BaseHTTPRequestHandler
+import threading
 from pyrogram import Client, filters
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, Message
 import yt_dlp
+
+class HealthCheckHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"OK")
+
+def run_server():
+    port = int(os.environ.get("PORT", 8080))
+    server = HTTPServer(("0.0.0.0", port), HealthCheckHandler)
+    server.serve_forever()
+
+threading.Thread(target=run_server, daemon=True).start()
 
 API_ID = 25463867
 API_HASH = "f8616f4968fb92904faa7c4790e2eb27"
@@ -21,16 +36,19 @@ RUSSIAN_DESC = (
     "Быстрое воспроизведение музыки высокого качества в группах."
 )
 
-# إعدادات متقدمة لتخطي حظر سيرفرات يوتيوب وبوتات الفحص
 YTDL_OPTS = {
-    "format": "bestaudio/best",
+    "format": "ba/b",
     "outtmpl": "downloads/%(id)s.%(ext)s",
     "quiet": True,
     "no_warnings": True,
     "nocheckcertificate": True,
+    "ignoreerrors": False,
+    "logtostderr": False,
+    "geo_bypass": True,
     "extractor_args": {
         "youtube": {
-            "player_client": ["android", "ios", "web_creator"]
+            "player_client": ["android", "ios", "tvhtml5"],
+            "player_skip": ["webpage", "configs"]
         }
     },
     "postprocessors": [{
@@ -76,7 +94,7 @@ async def search_music(client: Client, message: Message):
     try:
         os.makedirs("downloads", exist_ok=True)
         with yt_dlp.YoutubeDL(YTDL_OPTS) as ytdl:
-            info = ytdl.extract_info(f"ytsearch:{query}", download=True)["entries"][0]
+            info = ytdl.extract_info(f"ytsearch1:{query}", download=True)["entries"][0]
             audio_id = info["id"]
             title = info["title"]
             performer = info.get("uploader", "Spaidy Music")
