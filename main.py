@@ -37,20 +37,11 @@ RUSSIAN_DESC = (
 )
 
 YTDL_OPTS = {
-    "format": "ba/b",
+    "format": "bestaudio/best",
     "outtmpl": "downloads/%(id)s.%(ext)s",
     "quiet": True,
     "no_warnings": True,
     "nocheckcertificate": True,
-    "ignoreerrors": False,
-    "logtostderr": False,
-    "geo_bypass": True,
-    "extractor_args": {
-        "youtube": {
-            "player_client": ["android", "ios", "tvhtml5"],
-            "player_skip": ["webpage", "configs"]
-        }
-    },
     "postprocessors": [{
         "key": "FFmpegExtractAudio",
         "preferredcodec": "mp3",
@@ -93,10 +84,13 @@ async def search_music(client: Client, message: Message):
 
     try:
         os.makedirs("downloads", exist_ok=True)
+        # البحث في ساوندكلاود أولاً لتجنب حظر عناوين الآيبي الخاصة بالسيرفرات السحابية
+        search_target = f"scsearch1:{query}"
+        
         with yt_dlp.YoutubeDL(YTDL_OPTS) as ytdl:
-            info = ytdl.extract_info(f"ytsearch1:{query}", download=True)["entries"][0]
+            info = ytdl.extract_info(search_target, download=True)["entries"][0]
             audio_id = info["id"]
-            title = info["title"]
+            title = info.get("title", query)
             performer = info.get("uploader", "Spaidy Music")
             duration = int(info.get("duration", 0))
             audio_file = f"downloads/{audio_id}.mp3"
