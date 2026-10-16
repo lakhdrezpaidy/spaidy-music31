@@ -8,7 +8,6 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 import threading
 from pyrogram import Client, filters
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, Message
-import yt_dlp
 import requests
 
 class HealthCheckHandler(BaseHTTPRequestHandler):
@@ -36,21 +35,6 @@ RUSSIAN_DESC = (
     "Музыкальный бот для поиска и прослушивания треков в Telegram. "
     "Быстрое воспроизведение музыки высокого качества в группах."
 )
-
-# إعدادات لتخطي المقاطع المشفرة وسحب المقاطع المتاحة فقط
-YTDL_OPTS = {
-    "format": "bestaudio[ext=mp3]/bestaudio/best",
-    "outtmpl": "downloads/%(id)s.%(ext)s",
-    "quiet": True,
-    "no_warnings": True,
-    "nocheckcertificate": True,
-    "ignoreerrors": True,
-    "postprocessors": [{
-        "key": "FFmpegExtractAudio",
-        "preferredcodec": "mp3",
-        "preferredquality": "192",
-    }],
-}
 
 @app.on_message(filters.command("start") & filters.private)
 async def start_private(client: Client, message: Message):
@@ -87,44 +71,46 @@ async def search_music(client: Client, message: Message):
 
     try:
         os.makedirs("downloads", exist_ok=True)
-        downloaded = False
-        audio_file = None
-        title = query
-        performer = "Spaidy Music"
-        duration = 0
+        
+        # البحث السريع عبر محرك صوتيات عالمي غير محظور في السيرفرات
+        search_url = f"https://saavn.dev/api/search/songs?query={query}&page=1&limit=1"
+        res = requests.get(search_url, timeout=10).json()
 
-        # محاولة البحث السحابي المباشر وتجنب مقاطع DRM المحمية (بحث عن أفضل 5 نتائج وتخطي المشفر)
-        with yt_dlp.YoutubeDL(YTDL_OPTS) as ytdl:
-            search_res = ytdl.extract_info(f"scsearch5:{query}", download=False)
-            if search_res and "entries" in search_res:
-                for entry in search_res["entries"]:
-                    if not entry:
-                        continue
-                    try:
-                        info = ytdl.extract_info(entry["webpage_url"], download=True)
-                        if info:
-                            audio_id = info["id"]
-                            title = info.get("title", query)
-                            performer = info.get("uploader", "Spaidy Music")
-                            duration = int(info.get("duration", 0))
-                            audio_file = f"downloads/{audio_id}.mp3"
-                            if os.path.exists(audio_file):
-                                downloaded = True
-                                break
-                    except Exception:
-                        continue
+        if not res.get("success") or not res.get("data", {}).get("results"):
+            await status.edit_text("لم يتم العثور على الأغنية، جرب كتابة اسم الأغنية مع اسم المغني.")
+            return
 
-        if downloaded and audio_file and os.path.exists(audio_file):
-            await message.reply_audio(
-                audio=audio_file,
-                title=title,
-                performer=performer,
-                duration=duration
-            )
-            await status.delete()
-            os.remove(audio_file)
-        else:
-            await status.edit_text("لم يتم العثور على مقطع متاح للتحميل، جرب كتابة اسم الفنان مع الأغنية.")
+        song = res["data"]["results"][0]
+        title = song.get("name", query)
+        performer = song.get("primaryArtists", "Spaidy Music")
+        duration = int(song.get("duration", 0))
+
+        # جلب رابط الصوت بأعلى جودة متوفرة (320kbps أو 160kbps)
+        download_urls = song.get("downloadUrl", [])
+        if not download_urls:
+            await status.edit_text("تعذر جلب رابط التحميل المباشر.")
+            return
+
+        audio_url = download_urls[-1].get("url")
+        file_path = f"downloads/{song.get('id', 'track')}.mp3"
+
+        # تحميل الملف الصوتي بسرعة السيرفر الفائقة
+        r = requests.get(audio_url, stream=True, timeout=15)
+        with open(file_path, "wb") as f:
+            for chunk in r.iter_content(chunk_size=1024 * 64):
+                if chunk:
+                    f.write(chunk)
+
+        await message.reply_audio(
+            audio=file_path,
+            title=title,
+            performer=performer,
+            duration=duration
+        )
+        await status.delete()
+
+        if os.path.exists(file_path):
+            os.remove(file_path)
 
     except Exception as e:
         await status.edit_text(f"خطأ: {str(e)}")
