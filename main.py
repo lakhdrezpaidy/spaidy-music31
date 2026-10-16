@@ -1,14 +1,11 @@
-import asyncio
-loop = asyncio.new_event_loop()
-asyncio.set_event_loop(loop)
-
 import os
 import re
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import threading
 from pyrogram import Client, filters
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, Message
-import requests
+import aiohttp
+import aiofiles
 
 class HealthCheckHandler(BaseHTTPRequestHandler):
     def do_GET(self):
@@ -71,35 +68,38 @@ async def search_music(client: Client, message: Message):
 
     try:
         os.makedirs("downloads", exist_ok=True)
-        
-        # البحث السريع عبر محرك صوتيات عالمي غير محظور في السيرفرات
         search_url = f"https://saavn.dev/api/search/songs?query={query}&page=1&limit=1"
-        res = requests.get(search_url, timeout=10).json()
 
-        if not res.get("success") or not res.get("data", {}).get("results"):
-            await status.edit_text("لم يتم العثور على الأغنية، جرب كتابة اسم الأغنية مع اسم المغني.")
-            return
+        async with aiohttp.ClientSession() as session:
+            async with session.get(search_url, timeout=aiohttp.ClientTimeout(total=10)) as resp:
+                if resp.status != 200:
+                    await status.edit_text("خطأ في الاتصال بمحرك البحث.")
+                    return
+                data = await resp.json()
 
-        song = res["data"]["results"][0]
-        title = song.get("name", query)
-        performer = song.get("primaryArtists", "Spaidy Music")
-        duration = int(song.get("duration", 0))
+            if not data.get("success") or not data.get("data", {}).get("results"):
+                await status.edit_text("لم يتم العثور على الأغنية، جرب كتابة اسم المغني معها.")
+                return
 
-        # جلب رابط الصوت بأعلى جودة متوفرة (320kbps أو 160kbps)
-        download_urls = song.get("downloadUrl", [])
-        if not download_urls:
-            await status.edit_text("تعذر جلب رابط التحميل المباشر.")
-            return
+            song = data["data"]["results"][0]
+            title = song.get("name", query)
+            performer = song.get("primaryArtists", "Spaidy Music")
+            duration = int(song.get("duration", 0))
 
-        audio_url = download_urls[-1].get("url")
-        file_path = f"downloads/{song.get('id', 'track')}.mp3"
+            download_urls = song.get("downloadUrl", [])
+            if not download_urls:
+                await status.edit_text("تعذر جلب رابط التحميل.")
+                return
 
-        # تحميل الملف الصوتي بسرعة السيرفر الفائقة
-        r = requests.get(audio_url, stream=True, timeout=15)
-        with open(file_path, "wb") as f:
-            for chunk in r.iter_content(chunk_size=1024 * 64):
-                if chunk:
-                    f.write(chunk)
+            audio_url = download_urls[-1].get("url")
+            file_path = f"downloads/{song.get('id', 'track')}.mp3"
+
+            async with session.get(audio_url, timeout=aiohttp.ClientTimeout(total=30)) as audio_resp:
+                if audio_resp.status != 200:
+                    await status.edit_text("فشل تحميل الملف الصوتي.")
+                    return
+                async with aiofiles.open(file_path, mode="wb") as f:
+                    await f.write(await audio_resp.read())
 
         await message.reply_audio(
             audio=file_path,
