@@ -3,6 +3,7 @@ loop = asyncio.new_event_loop()
 asyncio.set_event_loop(loop)
 
 import os
+import re
 from pyrogram import Client, filters
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, Message
 import yt_dlp
@@ -53,17 +54,17 @@ async def disable_bot(client: Client, message: Message):
     IS_ACTIVE = False
     await message.reply_text("تم تعطيل سبايدي بنجاح")
 
-@app.on_message(filters.command(["تشغيل", "play", "بحث"]))
-async def play_music(client: Client, message: Message):
+@app.on_message(filters.regex(r"^(سبايدي|يوت)\s+(.+)$"))
+async def search_music(client: Client, message: Message):
     if not IS_ACTIVE:
         return
 
-    if len(message.command) < 2:
-        await message.reply_text("اكتب اسم الموسيقى بعد الأمر، مثال:\nتشغيل مرتضى اركان")
+    match = re.match(r"^(سبايدي|يوت)\s+(.+)$", message.text.strip())
+    if not match:
         return
 
-    query = " ".join(message.command[1:])
-    status = await message.reply_text("جاري المعالجة والتحميل من الخادم...")
+    query = match.group(2).strip()
+    status = await message.reply_text("سبايدي يبحث...")
 
     try:
         os.makedirs("downloads", exist_ok=True)
@@ -75,14 +76,11 @@ async def play_music(client: Client, message: Message):
             duration = int(info.get("duration", 0))
             audio_file = f"downloads/{audio_id}.mp3"
 
-        await status.edit_text("جاري الرفع إلى تيليجرام...")
-
         await message.reply_audio(
             audio=audio_file,
             title=title,
             performer=performer,
-            duration=duration,
-            caption="تم التشغيل بواسطة: 𝐒𝐩𝐚𝐢𝐝𝐲 𝐦𝐮𝐬𝐢𝐜"
+            duration=duration
         )
         await status.delete()
 
@@ -90,7 +88,7 @@ async def play_music(client: Client, message: Message):
             os.remove(audio_file)
 
     except Exception as e:
-        await status.edit_text(f"حدث خطأ: {str(e)}")
+        await status.edit_text(f"خطأ: {str(e)}")
 
 if __name__ == "__main__":
     print("𝐒𝐩𝐚𝐢𝐝𝐲 𝐦𝐮𝐬𝐢𝐜 يعمل الآن بنجاح!")
